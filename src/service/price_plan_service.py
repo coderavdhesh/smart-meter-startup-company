@@ -12,7 +12,6 @@ def calculate_time_elapsed(readings):
 
     return elapsed if elapsed>0 else 1
 
-
 class PricePlanService:
     def __init__(self, reading_repository):
         self.electricity_reading_service = ElectricityReadingService(reading_repository)
