@@ -15,11 +15,11 @@ class PricePlan:
             raise ValueError("date_time must be provided")
         
         target_day = date_time.isoweekday()
-        price_multiplier_at_the_peak_time= self.get_price_multiplier_of_the_peak_time_for_the_date(target_day)
+        price_multiplier_at_the_peak_time= self._get_price_multiplier_of_the_peak_time_for_the_date(target_day)
 
         return self.unit_rate * price_multiplier_at_the_peak_time
     
-    def get_price_multiplier_of_the_peak_time_for_the_date(self, target_day):
+    def _get_price_multiplier_of_the_peak_time_for_the_day(self, target_day):
         price_multiplier = 1.0
 
         for peak_time_multiplier in self.peak_time_multipliers:
