@@ -2,7 +2,7 @@ import datetime
 import math
 import random
 
-from ..service.time_converter import iso_format_to_unix_time
+from ..utils.time_converter import iso_format_to_unix_time
 
 
 def random_int_between(min_val, max_val):

@@ -2,13 +2,15 @@ from functools import reduce
 
 from ..repository.price_plan_repository import price_plan_repository
 from .electricity_reading_service import ElectricityReadingService
-from .time_converter import time_elapsed_in_hours
+from ..utils.time_converter import time_elapsed_in_hours
 
 
 def calculate_time_elapsed(readings):
     min_time = min(map(lambda r: r.time, readings))
     max_time = max(map(lambda r: r.time, readings))
-    return time_elapsed_in_hours(min_time, max_time)
+    elapsed = time_elapsed_in_hours(min_time, max_time)
+
+    return elapsed if elapsed>0 else 1
 
 
 class PricePlanService:

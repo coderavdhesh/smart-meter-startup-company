@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from src.service.time_converter import iso_format_to_unix_time, time_elapsed_in_hours
+from src.utils.time_converter import iso_format_to_unix_time, time_elapsed_in_hours
 
 
 class TestTimeConverter(TestCase):

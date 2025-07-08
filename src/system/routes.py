@@ -10,4 +10,4 @@ def root():
 
 @router.get("/health")
 def health():
-    return True
+    return "The app is up and running!"

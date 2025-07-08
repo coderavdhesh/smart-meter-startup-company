@@ -6,7 +6,7 @@ from src.domain.price_plan import PricePlan
 from src.repository.electricity_reading_repository import ElectricityReadingRepository
 from src.repository.price_plan_repository import price_plan_repository
 from src.service.price_plan_service import PricePlanService
-from src.service.time_converter import iso_format_to_unix_time
+from src.utils.time_converter import iso_format_to_unix_time
 
 
 class TestPricePlanService(TestCase):

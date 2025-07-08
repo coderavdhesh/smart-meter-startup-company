@@ -1,3 +1,5 @@
+from http import HTTPStatus
+from fastapi import HTTPException
 from ..domain.electricity_reading import ElectricityReading
 
 
@@ -12,3 +14,4 @@ class ElectricityReadingService:
 
     def retrieve_readings_for(self, smart_meter_id):
         return self.electricity_reading_repository.find(smart_meter_id)
+    

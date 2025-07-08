@@ -2,7 +2,7 @@ from datetime import datetime
 from unittest import TestCase
 from unittest.mock import patch
 
-from src.generator import electricity_reading_generator
+from src.utils import electricity_reading_generator
 
 
 class TestElectricityReadingGenerator(TestCase):

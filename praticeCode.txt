@@ -1,0 +1,755 @@
+Cool, now I am going to share first available in side the src folder:
+
+.project/src
+
+> controller folder:
+
+>> electricity_reading_controller.py
+
+from http import HTTPStatus
+from typing import List
+from fastapi import APIRouter, HTTPException, Path
+from ..repository.electricity_reading_repository import ElectricityReadingRepository
+from ..service.electricity_reading_service import ElectricityReadingService
+from .models import OPENAPI_EXAMPLES, ElectricReading, Readings
+repository = ElectricityReadingRepository()
+service = ElectricityReadingService(repository)
+router = APIRouter(prefix="/readings", tags=["Readings"])
+@router.post(
+"/store",
+response_model=ElectricReading,
+description="Store Readings",
+)
+def store(data: ElectricReading):
+service.store_reading(data.model_dump(mode="json"))
+return data
+@router.get(
+"/read/{smart_meter_id}",
+response_model=List[Readings],
+description="Get Stored Readings",
+)
+def read(smart_meter_id: str = Path(openapi_examples=OPENAPI_EXAMPLES)):
+readings = service.retrieve_readings_for(smart_meter_id)
+if len(readings) < 1:
+raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No readings found")
+else:
+return [r.to_json() for r in readings]
+
+>> models.py
+
+from typing import List
+
+from pydantic import BaseModel
+
+
+class Readings(BaseModel):
+    time: int
+    reading: float
+
+
+class ElectricReading(BaseModel):
+    smartMeterId: str
+    electricityReadings: List[Readings]
+
+
+class PricePlanComparisons(BaseModel):
+    pricePlanId: str
+    pricePlanComparisons: List[dict]
+
+
+OPENAPI_EXAMPLES = {
+    "Sarah": {"value": "smart-meter-0"},
+    "Peter": {"value": "smart-meter-1"},
+    "Charlie": {"value": "smart-meter-2"},
+    "Andrea": {"value": "smart-meter-3"},
+    "Alex": {"value": "smart-meter-4"},
+}
+
+
+>> price_plan_comparator_controller.py
+
+from http import HTTPStatus
+from typing import Dict, List
+
+from fastapi import APIRouter, HTTPException, Path, Query
+
+from ..service.account_service import AccountService
+from ..service.price_plan_service import PricePlanService
+from .electricity_reading_controller import repository as readings_repository
+from .models import OPENAPI_EXAMPLES, PricePlanComparisons
+
+router = APIRouter(
+    prefix="/price-plans",
+    tags=["Price Plan Comparator Controller"],
+)
+
+
+@router.get(
+    "/compare-all/{smart_meter_id}",
+    response_model=PricePlanComparisons,
+    description="Compare prices for all plans for a given meter",
+)
+def compare(smart_meter_id: str = Path(openapi_examples=OPENAPI_EXAMPLES)):
+    price_plan_service = PricePlanService(readings_repository)
+    account_service = AccountService()
+    list_of_spend_against_price_plans = price_plan_service.get_list_of_spend_against_each_price_plan_for(smart_meter_id)
+
+    if len(list_of_spend_against_price_plans) < 1:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND)
+    else:
+        return {
+            "pricePlanId": account_service.get_price_plan(smart_meter_id),
+            "pricePlanComparisons": list_of_spend_against_price_plans,
+        }
+
+
+@router.get(
+    "/recommend/{smart_meter_id}",
+    response_model=List[Dict],
+    description="View recommended price plans for usage",
+)
+def recommend(
+    smart_meter_id: str = Path(openapi_examples=OPENAPI_EXAMPLES),
+    limit: int = Query(description="Number of items to return", default=None),
+):
+    price_plan_service = PricePlanService(readings_repository)
+    list_of_spend_against_price_plans = price_plan_service.get_list_of_spend_against_each_price_plan_for(
+        smart_meter_id, limit=limit
+    )
+    return list_of_spend_against_price_plans
+
+> domain folder:
+
+>>  electricity_reading.py
+
+from dataclasses import dataclass
+
+
+@dataclass
+class ElectricityReading:
+    time: int
+    reading: float
+
+    def __init__(self, json):
+        self.time = json["time"]
+        self.reading = json["reading"]
+
+    def to_json(self):
+        return {
+            "time": self.time,
+            "reading": self.reading,
+        }
+
+>> price_plan.py
+
+class PricePlan:
+    def __init__(self, name, supplier, unit_rate, peak_time_multipliers=[]):
+        self.name = name
+        self.supplier = supplier
+        self.unit_rate = unit_rate
+        self.peak_time_multipliers = peak_time_multipliers
+
+    def get_price(self, date_time):
+        matching_multipliers = [m for m in self.peak_time_multipliers if m.day_of_week == date_time.isoweekday()]
+        return self.unit_rate * matching_multipliers[0].multiplier if len(matching_multipliers) else self.unit_rate
+
+    class DayOfWeek:
+        SUNDAY = 0
+        MONDAY = 1
+        TUESDAY = 2
+        WEDNESDAY = 3
+        THUESDAY = 4
+        FRIDAY = 5
+        SATURDAY = 6
+
+    class PeakTimeMultiplier:
+        def __init__(self, day_of_week, multiplier):
+            self.day_of_week = day_of_week
+            self.multiplier = multiplier
+
+> generator folder:
+
+>> electricity_reading_generetor.py
+
+import datetime
+import math
+import random
+
+from ..service.time_converter import iso_format_to_unix_time
+
+
+def random_int_between(min_val, max_val):
+    return "%02d" % random.randrange(min_val, max_val)
+
+
+def get_timedelta(sec=60):
+    return datetime.timedelta(seconds=sec)
+
+
+def generate_electricity_readings(num):
+    readings = []
+    for i in range(num):
+        random_time = (datetime.datetime.now() - get_timedelta(i * 60)).isoformat()
+        random_reading = math.floor(random.random() * 1000) / 1000
+        readings.append({"time": iso_format_to_unix_time(random_time), "reading": random_reading})
+
+    return readings
+
+> repository folder:
+
+>> electricity_reading_repository.py
+
+class ElectricityReadingRepository:
+    def __init__(self):
+        self.meter_associated_readings = {}
+
+    def store(self, smart_meter_id, readings):
+        if smart_meter_id in self.meter_associated_readings:
+            existing_list_of_readings = self.meter_associated_readings.get(smart_meter_id)
+            self.meter_associated_readings[smart_meter_id] = readings + existing_list_of_readings
+        else:
+            self.meter_associated_readings[smart_meter_id] = readings
+
+    def find(self, smart_meter_id):
+        if smart_meter_id in self.meter_associated_readings:
+            return self.meter_associated_readings[smart_meter_id]
+        else:
+            return []
+
+    def clear(self):
+        self.meter_associated_readings = {}
+
+>> price_plan_repository.py
+
+class PricePlanRepository:
+    def __init__(self):
+        self.price_plans = []
+
+    def store(self, new_price_plans):
+        self.price_plans += new_price_plans
+
+    def get(self):
+        return self.price_plans.copy()
+
+    def clear(self):
+        self.price_plans = []
+
+
+price_plan_repository = PricePlanRepository()
+
+
+> service folder:
+
+>> account_service.py
+
+class AccountService:
+    plan_ids_by_meter = {
+        "smart-meter-0": "price-plan-0",
+        "smart-meter-1": "price-plan-1",
+        "smart-meter-2": "price-plan-0",
+        "smart-meter-3": "price-plan-2",
+        "smart-meter-4": "price-plan-1",
+    }
+
+    def get_price_plan(self, smart_meter_id):
+        return self.plan_ids_by_meter[smart_meter_id]
+
+
+>> electricity_reading_service.py
+
+from ..domain.electricity_reading import ElectricityReading
+
+
+class ElectricityReadingService:
+    def __init__(self, repository):
+        self.electricity_reading_repository = repository
+        return
+
+    def store_reading(self, json):
+        readings = list(map(lambda x: ElectricityReading(x), json["electricityReadings"]))
+        return self.electricity_reading_repository.store(json["smartMeterId"], readings)
+
+    def retrieve_readings_for(self, smart_meter_id):
+        return self.electricity_reading_repository.find(smart_meter_id)
+
+
+>> price_plan_service.py
+
+from functools import reduce
+
+from ..repository.price_plan_repository import price_plan_repository
+from .electricity_reading_service import ElectricityReadingService
+from .time_converter import time_elapsed_in_hours
+
+
+def calculate_time_elapsed(readings):
+    min_time = min(map(lambda r: r.time, readings))
+    max_time = max(map(lambda r: r.time, readings))
+    return time_elapsed_in_hours(min_time, max_time)
+
+
+class PricePlanService:
+    def __init__(self, reading_repository):
+        self.electricity_reading_service = ElectricityReadingService(reading_repository)
+
+    def get_list_of_spend_against_each_price_plan_for(self, smart_meter_id, limit=None):
+        readings = self.electricity_reading_service.retrieve_readings_for(smart_meter_id)
+        if len(readings) < 1:
+            return []
+
+        average = self.calculate_average_reading(readings)
+        time_elapsed = calculate_time_elapsed(readings)
+        consumed_energy = average / time_elapsed
+
+        price_plans = price_plan_repository.get()
+
+        def cost_from_plan(price_plan):
+            cost = {}
+            cost[price_plan.name] = consumed_energy * price_plan.unit_rate
+            return cost
+
+        list_of_spend = list(map(cost_from_plan, self.cheapest_plans_first(price_plans)))
+
+        return list_of_spend[:limit]
+
+    def cheapest_plans_first(self, price_plans):
+        return list(sorted(price_plans, key=lambda plan: plan.unit_rate))
+
+    def calculate_average_reading(self, readings):
+        sum = reduce((lambda p, c: p + c), map(lambda r: r.reading, readings), 0)
+        return sum / len(readings)
+
+
+>> time_convertor.py
+
+from datetime import datetime
+
+
+def iso_format_to_unix_time(iso_format_string):
+    return __unix_time_of(datetime.fromisoformat(iso_format_string))
+
+
+def __unix_time_of(dt):
+    return int((dt - datetime(1970, 1, 1)).total_seconds())
+
+
+def time_elapsed_in_hours(earliest_unix_timestamp, latest_unix_timestamp):
+    return (latest_unix_timestamp - earliest_unix_timestamp) / 3600
+
+
+> system folder:
+
+>> routes.py
+
+from fastapi import APIRouter
+
+router = APIRouter(tags=["System"])
+
+
+@router.get("/")
+def root():
+    return {"message": "Welcome to the JoyEnergy "}
+
+
+@router.get("/health")
+def health():
+    return "The app is up and running!"
+
+
+
+(inside the src folder)
+> app_initializer.py
+
+from .controller.electricity_reading_controller import service as electricity_reading_service
+from .domain.price_plan import PricePlan
+from .generator.electricity_reading_generator import generate_electricity_readings
+from .repository.price_plan_repository import price_plan_repository
+
+DR_EVILS_DARK_ENERGY_ENERGY_SUPPLIER = "Dr Evil's Dark Energy"
+THE_GREEN_ECO_ENERGY_SUPPLIER = "The Green Eco"
+POWER_FOR_EVERYONE_ENERGY_SUPPLIER = "Power for Everyone"
+
+MOST_EVIL_PRICE_PLAN_ID = "price-plan-0"
+RENEWBLES_PRICE_PLAN_ID = "price-plan-1"
+STANDARD_PRICE_PLAN_ID = "price-plan-2"
+
+NUM_METERS = 10
+NUM_READINGS_AGAINST_METER = 5
+
+
+def populate_random_electricity_readings():
+    for index in range(NUM_METERS):
+        smartMeterId = f"smart-meter-{index}"
+        electricity_reading_service.store_reading(
+            {
+                "smartMeterId": smartMeterId,
+                "electricityReadings": generate_electricity_readings(NUM_READINGS_AGAINST_METER),
+            }
+        )
+
+
+def populate_price_plans():
+    price_plans = [
+        PricePlan(MOST_EVIL_PRICE_PLAN_ID, DR_EVILS_DARK_ENERGY_ENERGY_SUPPLIER, 10),
+        PricePlan(RENEWBLES_PRICE_PLAN_ID, THE_GREEN_ECO_ENERGY_SUPPLIER, 2),
+        PricePlan(STANDARD_PRICE_PLAN_ID, POWER_FOR_EVERYONE_ENERGY_SUPPLIER, 1),
+    ]
+    price_plan_repository.store(price_plans)
+
+
+def initialize_data():
+    populate_random_electricity_readings()
+    populate_price_plans()
+
+> main.py
+
+from http import HTTPStatus
+
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from loguru import logger
+from starlette.responses import JSONResponse
+
+from .app_initializer import initialize_data
+from .router import api_router
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="JoyEnergy")
+
+    app.include_router(api_router)
+
+    initialize_data()
+
+    @app.exception_handler(RequestValidationError)
+    async def custom_validation_exception_handler(request, e):
+        exc_str = f"{e}".replace("\n", " ").replace("   ", " ")
+        logger.warning(f"{request}: {exc_str}")
+        content = {"message": exc_str, "data": None}
+        return JSONResponse(content=content, status_code=HTTPStatus.UNPROCESSABLE_ENTITY)
+
+    return app
+
+
+app = create_app()
+
+
+> router.py
+
+from fastapi import APIRouter
+
+from .controller.electricity_reading_controller import router as reading_router
+from .controller.price_plan_comparator_controller import router as price_plan_router
+from .system.routes import router as system_router
+
+api_router = APIRouter()
+
+api_router.include_router(reading_router)
+api_router.include_router(price_plan_router)
+api_router.include_router(system_router)
+
+
+
+
+.project/tests
+
+> controller
+>> test_electricityReadingController.py
+
+import unittest
+from http import HTTPStatus
+
+from fastapi.testclient import TestClient
+
+from src.main import app
+
+
+class TestElectricityReadingController(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+
+    def test_successfully_add_the_reading_against_new_smart_meter_id(self):
+        readingJson = {"smartMeterId": "meter-11", "electricityReadings": [{"time": 1505825656, "reading": 0.6}]}
+
+        response = self.client.post("/readings/store", json=readingJson)
+        self.assertEqual(200, response.status_code)
+
+    def test_successfully_add_the_reading_against_existing_smart_meter_id(self):
+        readingJson1 = {
+            "smartMeterId": "meter-100",
+            "electricityReadings": [
+                {"time": 1505825838, "reading": 0.6},
+                {"time": 1505825848, "reading": 0.65},
+            ],
+        }
+
+        readingJson2 = {"smartMeterId": "meter-100", "electricityReadings": [{"time": 1605825849, "reading": 0.7}]}
+
+        self.client.post("/readings/store", json=readingJson1)
+        self.client.post("/readings/store", json=readingJson2)
+        readings = self.client.get("/readings/read/meter-100").json()
+        self.assertIn({"time": 1505825838, "reading": 0.6}, readings)
+        self.assertIn({"time": 1505825848, "reading": 0.65}, readings)
+        self.assertIn({"time": 1605825849, "reading": 0.7}, readings)
+
+    def test_respond_with_404_when_no_readings_found(self):
+        response = self.client.get("/readings/read/meter-100")
+        assert response.status_code == HTTPStatus.NOT_FOUND
+
+    def test_respond_with_error_if_smart_meter_id_not_set(self):
+        readingJson = {"electricityReadings": [{"time": 1505825838, "reading": 0.6}]}
+
+        assert self.client.post("/readings/store", json=readingJson).status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+    def test_respond_with_error_if_electricity_readings_not_set(self):
+        readingJson = {"smartMeterId": "meter-11"}
+
+        assert self.client.post("/readings/store", json=readingJson).status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+>> test_pricePlanComparatorController.py
+
+import unittest
+
+from fastapi.testclient import TestClient
+
+from src.controller.electricity_reading_controller import repository as readings_repository
+from src.main import app
+from src.utils.time_converter import iso_format_to_unix_time
+
+
+class TestPricePlanComparatorController(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+
+    def test_get_costs_against_all_price_plans(self):
+        res = self.client.get("/price-plans/compare-all/smart-meter-1")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["pricePlanId"], "price-plan-1")
+        self.assertEqual(len(res.json()["pricePlanComparisons"]), 3)
+
+    def test_recommend_cheapest_price_plans_no_limit_for_meter_usage(self):
+        readings_repository.clear()
+
+        readings = [
+            {"time": iso_format_to_unix_time("2020-01-05T10:30:00"), "reading": 35.0},
+            {"time": iso_format_to_unix_time("2020-01-05T11:00:00"), "reading": 5.0},
+        ]
+
+        readingJson = {"smartMeterId": "meter-103", "electricityReadings": readings}
+
+        self.client.post("/readings/store", json=readingJson)
+        res = self.client.get("/price-plans/recommend/meter-103")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(
+            res.json(),
+            [{"price-plan-2": 40}, {"price-plan-1": 80}, {"price-plan-0": 400}],
+        )
+
+
+> Domain
+
+>> test_pricePlan.py
+
+from datetime import datetime
+from unittest import TestCase
+
+from src.domain.price_plan import PricePlan
+
+
+class TestPricePlan(TestCase):
+    def test_return_the_base_price_given_an_off_peak_date_time(self):
+        peak_time_multiplier = PricePlan.PeakTimeMultiplier(PricePlan.DayOfWeek.WEDNESDAY, 10)
+        off_peak_time = datetime(2000, 1, 1, 11, 11, 11)
+
+        plan = PricePlan("plan-name", "supplier-name", 1, [peak_time_multiplier])
+
+        price = plan.get_price(off_peak_time)
+
+        self.assertEqual(price, 1)
+
+    def test_return_a_peak_price_given_a_datetime_matching_peak_day(self):
+        peak_time_multiplier = PricePlan.PeakTimeMultiplier(PricePlan.DayOfWeek.WEDNESDAY, 10)
+        off_peak_time = datetime(2000, 1, 5, 11, 11, 11)
+
+        plan = PricePlan("plan-name", "supplier-name", 1, [peak_time_multiplier])
+
+        price = plan.get_price(off_peak_time)
+
+        self.assertEqual(price, 10)
+
+
+> generator
+
+>> test_electricityReadingGenerator.py
+
+from datetime import datetime
+from unittest import TestCase
+from unittest.mock import patch
+
+from src.utils import electricity_reading_generator
+
+
+class TestElectricityReadingGenerator(TestCase):
+    def test_generate_electricity_readings(self):
+        generated = electricity_reading_generator.generate_electricity_readings(10)
+        self.assertEqual(len(generated), 10)
+        for r in generated:
+            self.assertEqual(datetime.fromtimestamp(r["time"]).year, datetime.now().year)
+            self.assertGreaterEqual(r["reading"], 0)
+            self.assertLessEqual(r["reading"], 1)
+
+    def test_return_two_digit_number_for_single_digit_number(self):
+        with patch("random.randrange", return_value=9):
+            self.assertEqual(electricity_reading_generator.random_int_between(0, 1), "09")
+
+    def test_return_two_digit_number_for_two_digit_number(self):
+        with patch("random.randrange", return_value=11):
+            self.assertEqual(electricity_reading_generator.random_int_between(0, 1), "11")
+
+
+
+> repository
+
+>> test_electricityReadingRepository.py
+
+
+import dataclasses
+from unittest import TestCase
+
+from src.domain.electricity_reading import ElectricityReading
+from src.repository.electricity_reading_repository import ElectricityReadingRepository
+
+
+class TestElectricityReadingRepository(TestCase):
+    def setUp(self):
+        self.electricity_reading_repository = ElectricityReadingRepository()
+        self.electricity_reading_repository.store(
+            "smart-meter-0",
+            [
+                ElectricityReading({"time": 1507375234, "reading": 0.5}),
+                ElectricityReading({"time": 1510053634, "reading": 0.75}),
+            ],
+        )
+
+    def test_have_new_entry_when_new_smart_meter_id_is_given(self):
+        readings = self.electricity_reading_repository.find("smart-meter-0")
+        self.assertDictEqual({"time": 1507375234, "reading": 0.5}, dataclasses.asdict(readings[0]))
+        self.assertDictEqual({"time": 1510053634, "reading": 0.75}, dataclasses.asdict(readings[1]))
+
+    def test_add_usage_data_against_smart_meter_id_if_it_already_exists(self):
+        self.electricity_reading_repository.store(
+            "smart-meter-0", [ElectricityReading({"time": 1510572000, "reading": 0.32})]
+        )
+        readings = self.electricity_reading_repository.find("smart-meter-0")
+        self.assertEqual(3, len(readings))
+        self.assertIn(ElectricityReading({"time": 1507375234, "reading": 0.5}), readings)
+        self.assertIn(ElectricityReading({"time": 1510053634, "reading": 0.75}), readings)
+        self.assertIn(ElectricityReading({"time": 1510572000, "reading": 0.32}), readings)
+
+
+> service
+
+>> test_electricityReadingService.py
+
+from unittest import TestCase
+from unittest.mock import MagicMock
+
+from src.domain.electricity_reading import ElectricityReading
+from src.repository.electricity_reading_repository import ElectricityReadingRepository
+from src.service.electricity_reading_service import ElectricityReadingService
+from src.utils.time_converter import iso_format_to_unix_time
+
+
+class TestElectricityReadingService(TestCase):
+    def setUp(self):
+        self.repository = ElectricityReadingRepository()
+        self.repository.store = MagicMock()
+        self.electricity_reading_service = ElectricityReadingService(self.repository)
+
+    def test_call_repository_to_store_readings(self):
+        json = {
+            "smartMeterId": "meter-45",
+            "electricityReadings": [
+                {"time": iso_format_to_unix_time("2015-03-02T08:55:00"), "reading": 0.812},
+                {"time": iso_format_to_unix_time("2015-09-02T08:55:00"), "reading": 0.23},
+            ],
+        }
+
+        self.electricity_reading_service.store_reading(json)
+
+        self.repository.store.assert_called_with(
+            "meter-45",
+            [
+                ElectricityReading({"time": iso_format_to_unix_time("2015-03-02T08:55:00"), "reading": 0.812}),
+                ElectricityReading({"time": iso_format_to_unix_time("2015-09-02T08:55:00"), "reading": 0.23}),
+            ],
+        )
+
+
+>> test_pricePlanService.py
+
+from unittest import TestCase
+from unittest.mock import MagicMock
+
+from src.domain.electricity_reading import ElectricityReading
+from src.domain.price_plan import PricePlan
+from src.repository.electricity_reading_repository import ElectricityReadingRepository
+from src.repository.price_plan_repository import price_plan_repository
+from src.service.price_plan_service import PricePlanService
+from src.utils.time_converter import iso_format_to_unix_time
+
+
+class TestPricePlanService(TestCase):
+    electricity_reading_repository = ElectricityReadingRepository()
+    price_plan_service = PricePlanService(electricity_reading_repository)
+
+    def test_calculate_costs_against_all_price_plans(self):
+        price_plan_repository.clear()
+        price_plan_repository.store(
+            [PricePlan("X1", "XS1", 10, []), PricePlan("X2", "XS2", 2, []), PricePlan("X6", "XS6", 1, [])]
+        )
+
+        reading_service_mock = MagicMock(
+            return_value=[
+                ElectricityReading({"time": iso_format_to_unix_time("2017-11-10T09:00:00"), "reading": 0.65}),
+                ElectricityReading({"time": iso_format_to_unix_time("2017-11-10T09:30:00"), "reading": 0.35}),
+                ElectricityReading({"time": iso_format_to_unix_time("2017-11-10T10:00:00"), "reading": 0.5}),
+            ]
+        )
+        self.price_plan_service.electricity_reading_service.retrieve_readings_for = reading_service_mock
+
+        spend = self.price_plan_service.get_list_of_spend_against_each_price_plan_for("smart-meter-1001")
+
+        self.assertEqual(spend[0], {"X6": 0.5})
+        self.assertEqual(spend[1], {"X2": 1})
+        self.assertEqual(spend[2], {"X1": 5})
+
+
+>> test_TimeConverter.py
+
+from unittest import TestCase
+
+from src.utils.time_converter import iso_format_to_unix_time, time_elapsed_in_hours
+
+
+class TestTimeConverter(TestCase):
+    def test_iso_format_to_unix_time(self):
+        self.assertEqual(iso_format_to_unix_time("1970-01-01T00:00:00"), 0)
+        self.assertEqual(iso_format_to_unix_time("1970-01-01T01:00:01"), 3601)
+        self.assertEqual(iso_format_to_unix_time("2020-02-29T23:12:41"), 1583017961)
+
+    def test_calculate_elapsed_time_in_hours_from_two_unix_timestamps(self):
+        earlier = iso_format_to_unix_time("2018-05-24T11:30:00")
+        later = iso_format_to_unix_time("2018-05-24T12:00:00")
+
+        self.assertEqual(time_elapsed_in_hours(earlier, later), 0.5)
+
+
+./project
+
+> app.py
+> docker
+> poetry.lock
+> pyproject.toml
+> readme.md

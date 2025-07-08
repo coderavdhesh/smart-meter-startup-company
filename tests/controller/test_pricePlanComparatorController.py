@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from src.controller.electricity_reading_controller import repository as readings_repository
 from src.main import app
-from src.service.time_converter import iso_format_to_unix_time
+from src.utils.time_converter import iso_format_to_unix_time
 
 
 class TestPricePlanComparatorController(unittest.TestCase):
