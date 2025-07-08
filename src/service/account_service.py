@@ -7,8 +7,8 @@ class AccountService:
         "smart-meter-4": "price-plan-1",
     }
 
-    def get_price_plan(self, smart_meter_id):
+    def get_price_plan(self, smart_meter_id) -> str:
         return self.plan_ids_by_meter[smart_meter_id]
     
-    def has_meter(self, smart_meter_id):
+    def has_meter(self, smart_meter_id) -> bool:
         return smart_meter_id in self.plan_ids_by_meter
