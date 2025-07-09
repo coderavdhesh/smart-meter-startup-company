@@ -14,4 +14,3 @@ class ElectricityReadingService:
 
     def retrieve_readings_for(self, smart_meter_id):
         return self.electricity_reading_repository.find(smart_meter_id)
-    

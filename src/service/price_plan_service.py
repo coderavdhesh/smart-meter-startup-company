@@ -16,11 +16,11 @@ class PricePlanService:
     def __init__(self, reading_repository):
         self.electricity_reading_service = ElectricityReadingService(reading_repository)
 
-    def get_list_of_spend_against_each_price_plan_for(self, smart_meter_id, limit=None):
+    def get_list_of_spend_against_each_price_plan_for(self, smart_meter_id, limit=None) -> list:
         readings = self.electricity_reading_service.retrieve_readings_for(smart_meter_id)
         if len(readings) < 1:
             return []
-
+        
         average = self.calculate_average_reading(readings)
         time_elapsed = calculate_time_elapsed(readings)
         consumed_energy = average / time_elapsed
