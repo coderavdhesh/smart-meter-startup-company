@@ -1,7 +1,8 @@
 from http import HTTPStatus
 from typing import List
-
-from fastapi import APIRouter, HTTPException, Path, logger
+from loguru import logger
+import json
+from fastapi import APIRouter, HTTPException, Path
 
 from ..repository.electricity_reading_repository import ElectricityReadingRepository
 from ..service.electricity_reading_service import ElectricityReadingService
@@ -34,16 +35,25 @@ def store(data: ElectricReading):
     description="Get Stored Readings",
 )
 def read(smart_meter_id: str = Path(openapi_examples=OPENAPI_EXAMPLES)):
-
+    logger.info("Fetching readings for meter: {meter_id}", meter_id=smart_meter_id)
     try:
         if not smart_meter_id or smart_meter_id.strip() == "":
+            logger.error("Smart meter ID is required but not provided")
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Smart meter ID is required")
+        
+        if smart_meter_id not in repository.get_all_smart_meter_ids():
+            logger.error("Smart meter ID {meter_id} does not exist", meter_id=smart_meter_id)
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Smart meter ID does not exist")
         
         readings = service.retrieve_readings_for(smart_meter_id)
         if not readings:
+            logger.warning("No readings found for meter: {meter_id}", meter_id=smart_meter_id)
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No readings found")
         else:
-            return [r.to_json() for r in readings]
+            all_readings = [r.to_json() for r in readings]
+            logger.info("Fetched readings are : {all_readings}", all_readings=json.dumps(all_readings) )
+            return all_readings
     except Exception as e:
         # logger.error(f"Error retrieving readings: {str(e)}")
+        logger.error("Error retrieving readings for meter: {meter_id}, error: {error}", meter_id=smart_meter_id, error=str(e))
         raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=f"An error occurred: {str(e)}")

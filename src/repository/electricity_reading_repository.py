@@ -14,6 +14,9 @@ class ElectricityReadingRepository:
             return self.meter_associated_readings[smart_meter_id]
         else:
             return []
-
+        
+    def get_all_smart_meter_ids(self):
+        return list(self.meter_associated_readings.keys())
+    
     def clear(self):
         self.meter_associated_readings = {}
