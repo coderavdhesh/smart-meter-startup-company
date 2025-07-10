@@ -17,6 +17,9 @@ class PricePlanService:
         self.electricity_reading_service = ElectricityReadingService(reading_repository)
 
     def get_list_of_spend_against_each_price_plan_for(self, smart_meter_id, limit=None) -> list:
+
+        """This fucntion is getting the price plans for a given smart meter ID."""
+
         readings = self.electricity_reading_service.retrieve_readings_for(smart_meter_id)
         if len(readings) < 1:
             return []
@@ -27,12 +30,12 @@ class PricePlanService:
 
         price_plans = price_plan_repository.get()
 
-        def cost_from_plan(price_plan):
+        def _cost_from_plan(price_plan):
             cost = {}
             cost[price_plan.name] = consumed_energy * price_plan.unit_rate
             return cost
 
-        list_of_spend = list(map(cost_from_plan, self.cheapest_plans_first(price_plans)))
+        list_of_spend = list(map(_cost_from_plan, self.cheapest_plans_first(price_plans)))
 
         return list_of_spend[:limit]
 

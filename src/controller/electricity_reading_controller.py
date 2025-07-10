@@ -4,6 +4,9 @@ from loguru import logger
 import json
 from fastapi import APIRouter, HTTPException, Path
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
 from ..repository.electricity_reading_repository import ElectricityReadingRepository
 from ..service.electricity_reading_service import ElectricityReadingService
 from ..domain.models import OPENAPI_EXAMPLES, ElectricReading, Readings
@@ -21,13 +24,17 @@ router = APIRouter(prefix="/readings", tags=["Readings"])
 )
 def store(data: ElectricReading):
     # handle the exception
+    logger.info("Storing the reading {data} in the memory of the electricity_reading_repo", data = data)
     try:
         service.store_reading(data.model_dump(mode="json"))
+        logger.success("The reading {} strored successfully", data)
         return data
     except Exception as e:
         # Handle general errors
+        logger.error("Error storing reading: {error}", error=str(e))
         raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=f"An error occurred: {str(e)}")
     
+
 
 @router.get(
     "/read/{smart_meter_id}",
