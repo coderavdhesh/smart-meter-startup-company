@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, Path
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from src.service.account_service import AccountService
+
 from ..repository.electricity_reading_repository import ElectricityReadingRepository
 from ..service.electricity_reading_service import ElectricityReadingService
 from ..domain.models import OPENAPI_EXAMPLES, ElectricReading, Readings
@@ -33,8 +35,6 @@ def store(data: ElectricReading):
         # Handle general errors
         logger.error("Error storing reading: {error}", error=str(e))
         raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=f"An error occurred: {str(e)}")
-    
-
 
 @router.get(
     "/read/{smart_meter_id}",

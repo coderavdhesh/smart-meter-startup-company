@@ -26,7 +26,6 @@ def compare(smart_meter_id: str = Path(openapi_examples=OPENAPI_EXAMPLES)):
 
     logger.info("Comapre the price plan for the meter ID: {smart_meter_id}", smart_meter_id=smart_meter_id)
 
-
     logger.info("Fetching price plan comparisons for meter: {smart_meter_id}", smart_meter_id=smart_meter_id)
     price_plan_service = PricePlanService(readings_repository)
 
